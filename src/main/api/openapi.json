@@ -1,15 +1,15 @@
 {
   "openapi": "3.0.0",
   "info": {
-    "title": "API Import CSV vers Elasticsearch",
-    "description": "API pour importer des fichiers CSV et les indexer dans Elasticsearch",
-    "version": "1.0.0"
+    "title": "CSV to Elasticsearch API",
+    "version": "1.0.0",
+    "description": "API for uploading large CSV files and importing them to Elasticsearch"
   },
   "paths": {
     "/file/import": {
       "post": {
-        "summary": "Téléverser et traiter un fichier CSV",
-        "operationId": "importCsvToElasticsearch",
+        "operationId": "uploadCsvToElasticsearch",
+        "summary": "Upload CSV file and import to Elasticsearch",
         "requestBody": {
           "content": {
             "multipart/form-data": {
@@ -18,33 +18,41 @@
                 "properties": {
                   "file": {
                     "type": "string",
-                    "format": "binary"
+                    "format": "binary",
+                    "description": "CSV file to upload"
                   },
-                  "collection": {
+                  "indexName": {
                     "type": "string",
-                    "description": "Nom de la collection MongoDB"
+                    "description": "Elasticsearch index name"
+                  },
+                  "batchSize": {
+                    "type": "integer",
+                    "description": "Number of records to process in each batch",
+                    "default": 5000
                   }
                 },
-                "required": [
-                  "file"
-                ]
+                "required": ["file", "indexName"]
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Fichier CSV traité avec succès",
+            "description": "CSV file uploaded and processing started",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
                     "status": {
+                      "type": "string",
+                      "enum": ["success", "error"]
+                    },
+                    "message": {
                       "type": "string"
                     },
-                    "rowsInserted": {
-                      "type": "integer"
+                    "jobId": {
+                      "type": "string"
                     }
                   }
                 }
@@ -52,7 +60,7 @@
             }
           },
           "400": {
-            "description": "Requête invalide",
+            "description": "Invalid request",
             "content": {
               "application/json": {
                 "schema": {
@@ -65,14 +73,45 @@
                 }
               }
             }
-          },
-          "500": {
-            "description": "Erreur lors du traitement CSV",
+          }
+        }
+      }
+    },
+    "/api/v1/csv/status/{jobId}": {
+      "get": {
+        "operationId": "getCsvImportStatus",
+        "summary": "Get CSV import job status",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job status",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["processing", "completed", "failed"]
+                    },
+                    "progress": {
+                      "type": "number"
+                    },
+                    "processedRecords": {
+                      "type": "integer"
+                    },
+                    "totalRecords": {
+                      "type": "integer"
+                    },
                     "error": {
                       "type": "string"
                     }

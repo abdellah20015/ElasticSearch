@@ -10,7 +10,6 @@ public class Services {
   public static final String DB_FIND_ONE = "db.findOne";
 
   //CSV
-  public static final String CSV_UPLOAD = "csv.import";
-  public static final String CSV_PROCESS = "csv.process";
+  public static final String CSV_TO_ELASTICSEARCH = "csv.to.elasticsearch";
 
 }

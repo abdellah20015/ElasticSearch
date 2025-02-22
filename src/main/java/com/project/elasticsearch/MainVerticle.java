@@ -1,10 +1,11 @@
 package com.project.elasticsearch;
 
-
-import com.project.elasticsearch.Services.csv.CsvImportVerticle;
+import co.elastic.clients.elasticsearch.ElasticsearchClient;
+import com.project.elasticsearch.Services.csv.CsvElasticsearchVerticle;
 import com.project.elasticsearch.config.Conf;
 
 import com.project.elasticsearch.config.Db;
+import com.project.elasticsearch.config.ElasticsearchConfig;
 import com.project.elasticsearch.constants.Services;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Promise;
@@ -23,7 +24,6 @@ import io.vertx.ext.web.openapi.router.RouterBuilder;
 import io.vertx.ext.web.sstore.LocalSessionStore;
 import io.vertx.openapi.contract.OpenAPIContract;
 
-import java.util.List;
 
 
 public class MainVerticle extends AbstractVerticle {
@@ -35,6 +35,7 @@ public class MainVerticle extends AbstractVerticle {
   public void start(Promise<Void> startPromise) throws Exception {
     String path = "src/main/api/openapi.json";
     Conf.createMongoClient(vertx);
+    ElasticsearchClient esClient = ElasticsearchConfig.createClient();
     OpenAPIContract.from(vertx, path)
     .onSuccess(contract -> {
       // Create a router builder
@@ -72,7 +73,7 @@ public class MainVerticle extends AbstractVerticle {
 
 
       //CSV
-      routerBuilder.getRoute("importCsvToElasticsearch").addHandler(this::handleCsvImport);
+      routerBuilder.getRoute("uploadCsvToElasticsearch").addHandler(this::handleCsvUpload);
 
 
       // Create a router
@@ -98,54 +99,76 @@ public class MainVerticle extends AbstractVerticle {
     });
   }
 
-  private void handleCsvImport(RoutingContext ctx) {
-    List<FileUpload> uploads = ctx.fileUploads();
-    if (uploads.isEmpty()) {
-      ctx.response()
-        .setStatusCode(400)
-        .putHeader("Content-Type", "application/json")
-        .end(new JsonObject().put("error", "No file uploaded").encode());
-      return;
-    }
-
-    FileUpload csvFile = uploads.get(0);
-    if (!csvFile.contentType().equals("text/csv") && !csvFile.fileName().endsWith(".csv")) {
-      ctx.response()
-        .setStatusCode(400)
-        .putHeader("Content-Type", "application/json")
-        .end(new JsonObject().put("error", "File must be CSV format").encode());
-      return;
-    }
-
-    JsonObject request = new JsonObject()
-      .put("filePath", csvFile.uploadedFileName());
-
-    System.out.println("Début du traitement CSV");
-
-    vertx.eventBus().request(Services.CSV_PROCESS, request, ar -> {
-      if (ar.succeeded()) {
-        JsonObject result = (JsonObject) ar.result().body();
+  private void handleCsvUpload(RoutingContext ctx) {
+    try {
+      if (ctx.fileUploads().isEmpty()) {
         ctx.response()
-          .setStatusCode(200)
-          .putHeader("Content-Type", "application/json")
-          .end(result.encode());
-
-
-        vertx.fileSystem().delete(csvFile.uploadedFileName(), deleteResult -> {
-          if (deleteResult.failed()) {
-            System.err.println("Erreur lors de la suppression du fichier temporaire: " +
-              deleteResult.cause().getMessage());
-          }
-        });
-      } else {
-        ctx.response()
-          .setStatusCode(500)
+          .setStatusCode(400)
           .putHeader("Content-Type", "application/json")
           .end(new JsonObject()
-            .put("error", "Erreur lors du traitement CSV: " + ar.cause().getMessage())
+            .put("status", "error")
+            .put("message", "No file uploaded")
             .encode());
+        return;
       }
-    });
+
+      FileUpload upload = ctx.fileUploads().iterator().next();
+
+      if (!upload.contentType().equals("text/csv") && !upload.fileName().endsWith(".csv")) {
+        ctx.response()
+          .setStatusCode(400)
+          .putHeader("Content-Type", "application/json")
+          .end(new JsonObject()
+            .put("status", "error")
+            .put("message", "File must be CSV format")
+            .encode());
+        return;
+      }
+
+      String indexName = ctx.request().getFormAttribute("indexName");
+      if (indexName == null || indexName.trim().isEmpty()) {
+        ctx.response()
+          .setStatusCode(400)
+          .putHeader("Content-Type", "application/json")
+          .end(new JsonObject()
+            .put("status", "error")
+            .put("message", "Index name is required")
+            .encode());
+        return;
+      }
+
+      JsonObject message = new JsonObject()
+        .put("filePath", upload.uploadedFileName())
+        .put("fileName", upload.fileName())
+        .put("indexName", indexName);
+
+      vertx.eventBus().request(Services.CSV_TO_ELASTICSEARCH , message, reply -> {
+        if (reply.succeeded()) {
+          JsonObject response = (JsonObject) reply.result().body();
+          ctx.response()
+            .setStatusCode(response.getBoolean("success", false) ? 200 : 500)
+            .putHeader("Content-Type", "application/json")
+            .end(response.encode());
+        } else {
+          ctx.response()
+            .setStatusCode(500)
+            .putHeader("Content-Type", "application/json")
+            .end(new JsonObject()
+              .put("status", "error")
+              .put("message", "Failed to process CSV file: " + reply.cause().getMessage())
+              .encode());
+        }
+      });
+
+    } catch (Exception e) {
+      ctx.response()
+        .setStatusCode(500)
+        .putHeader("Content-Type", "application/json")
+        .end(new JsonObject()
+          .put("status", "error")
+          .put("message", "Internal server error: " + e.getMessage())
+          .encode());
+    }
   }
 
 
@@ -153,7 +176,7 @@ public class MainVerticle extends AbstractVerticle {
   public static void main(String[] args) {
     Vertx vertx = Vertx.vertx();
     vertx.deployVerticle(new MainVerticle());
-    vertx.deployVerticle(new CsvImportVerticle());
+    vertx.deployVerticle(new CsvElasticsearchVerticle());
     vertx.deployVerticle(new Db());
 
   }

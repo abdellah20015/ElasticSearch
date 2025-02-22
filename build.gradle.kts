@@ -16,6 +16,7 @@ repositories {
 
 val vertxVersion = "4.5.13"
 val junitJupiterVersion = "5.9.1"
+val elasticsearchVersion= "8.12.0"
 
 val mainVerticleName = "com.project.elasticsearch.MainVerticle"
 val launcherClassName = "io.vertx.core.Launcher"
@@ -38,6 +39,20 @@ dependencies {
   testImplementation("io.vertx:vertx-junit5")
   implementation("org.slf4j:slf4j-api:1.7.36")
   testImplementation("org.junit.jupiter:junit-jupiter:$junitJupiterVersion")
+
+  // Elasticsearch dependencies
+  implementation("co.elastic.clients:elasticsearch-java:$elasticsearchVersion")
+  implementation("com.fasterxml.jackson.core:jackson-databind:2.15.2")
+  implementation("jakarta.json:jakarta.json-api:2.1.1")
+
+  // Additional Elasticsearch dependencies
+  implementation("org.elasticsearch.client:elasticsearch-rest-high-level-client:7.17.10")
+  implementation("org.elasticsearch.client:elasticsearch-rest-client:7.17.10")
+  implementation("org.elasticsearch:elasticsearch:7.17.10")
+
+  // Logging for Elasticsearch
+  implementation("org.apache.logging.log4j:log4j-core:2.20.0")
+  implementation("org.apache.logging.log4j:log4j-api:2.20.0")
 }
 
 java {
