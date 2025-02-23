@@ -113,7 +113,6 @@ public class CsvElasticsearchVerticle extends AbstractVerticle {
           sendBulkRequest(allOperations);
           System.out.println("All documents sent successfully");
 
-          // Suppression automatique du fichier CSV après insertion réussie
           fs.delete(filePath, deleteResult -> {
             if (deleteResult.succeeded()) {
               System.out.println("Successfully deleted CSV file: " + filePath);
