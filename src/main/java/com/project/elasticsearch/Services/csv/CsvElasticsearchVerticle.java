@@ -1,8 +1,6 @@
 package com.project.elasticsearch.Services.csv;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
-import co.elastic.clients.elasticsearch.core.BulkResponse;
-import co.elastic.clients.elasticsearch.core.bulk.BulkOperation;
 import co.elastic.clients.elasticsearch._types.mapping.DynamicMapping;
 import com.project.elasticsearch.constants.Services;
 import io.vertx.core.AbstractVerticle;
@@ -11,8 +9,8 @@ import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.file.FileSystem;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import com.project.elasticsearch.config.ElasticsearchConfig;
@@ -38,21 +36,14 @@ public class CsvElasticsearchVerticle extends AbstractVerticle {
     String indexName = request.getString("indexName").toLowerCase();
 
     try {
-      boolean indexExists = esClient.indices().exists(e -> e
-        .index(indexName)
-      ).value();
+      boolean indexExists = esClient.indices().exists(e -> e.index(indexName)).value();
 
       if (!indexExists) {
         System.out.println("Index does not exist. Creating new index: " + indexName);
         var createResponse = esClient.indices().create(c -> c
           .index(indexName)
-          .mappings(m -> m
-            .dynamic(DynamicMapping.True)
-          )
-          .settings(s -> s
-            .numberOfShards("1")
-            .numberOfReplicas("1")
-          )
+          .mappings(m -> m.dynamic(DynamicMapping.True))
+          .settings(s -> s.numberOfShards("1").numberOfReplicas("1"))
         );
 
         if (!createResponse.acknowledged()) {
@@ -91,27 +82,19 @@ public class CsvElasticsearchVerticle extends AbstractVerticle {
             System.out.println("Headers detected: " + String.join(", ", headers));
           }
 
-          List<BulkOperation> allOperations = new ArrayList<>();
-
           for (int i = 1; i < lines.length; i++) {
             String line = lines[i].trim();
             if (!line.isEmpty()) {
               Map<String, Object> document = createDocument(line, headers);
-              allOperations.add(BulkOperation.of(op -> op
-                .index(idx -> idx
-                  .index(indexName)
-                  .document(document)
-                )
-              ));
-
               int currentRow = processedRows.incrementAndGet();
-              System.out.println("Processing row " + currentRow + "/" + (lines.length - 1) + ": " + line);
+              // Insertion directe dans Elasticsearch
+              esClient.index(idx -> idx
+                .index(indexName)
+                .document(document)
+              );
+              System.out.println("Row " + currentRow + "/" + (lines.length - 1) + " inserted directly");
             }
           }
-
-          System.out.println("Sending all documents to Elasticsearch in one batch...");
-          sendBulkRequest(allOperations);
-          System.out.println("All documents sent successfully");
 
           fs.delete(filePath, deleteResult -> {
             if (deleteResult.succeeded()) {
@@ -148,22 +131,6 @@ public class CsvElasticsearchVerticle extends AbstractVerticle {
           .put("message", "Failed to read file: " + readResult.cause().getMessage()));
       }
     });
-  }
-
-  private void sendBulkRequest(List<BulkOperation> operations) throws Exception {
-    System.out.println("Executing bulk request with " + operations.size() + " operations");
-    BulkResponse response = esClient.bulk(b -> b
-      .operations(operations)
-    );
-
-    if (response.errors()) {
-      String errorReason = response.items().get(0).error() != null ?
-        response.items().get(0).error().reason() : "Unknown error";
-      System.err.println("Bulk indexing error: " + errorReason);
-      throw new Exception("Bulk indexing had errors: " + errorReason);
-    } else {
-      System.out.println("Bulk request completed successfully");
-    }
   }
 
   private Map<String, Object> createDocument(String line, List<String> headers) {

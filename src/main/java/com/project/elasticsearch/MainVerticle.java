@@ -2,14 +2,14 @@ package com.project.elasticsearch;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import com.project.elasticsearch.Services.csv.CsvElasticsearchVerticle;
-import com.project.elasticsearch.config.Conf;
 
-import com.project.elasticsearch.config.Db;
+
 import com.project.elasticsearch.config.ElasticsearchConfig;
 import com.project.elasticsearch.constants.Services;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
+import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.FileUpload;
@@ -34,7 +34,6 @@ public class MainVerticle extends AbstractVerticle {
   @Override
   public void start(Promise<Void> startPromise) throws Exception {
     String path = "src/main/api/openapi.json";
-    Conf.createMongoClient(vertx);
     ElasticsearchClient esClient = ElasticsearchConfig.createClient();
     OpenAPIContract.from(vertx, path)
     .onSuccess(contract -> {
@@ -142,7 +141,7 @@ public class MainVerticle extends AbstractVerticle {
         .put("fileName", upload.fileName())
         .put("indexName", indexName);
 
-      vertx.eventBus().request(Services.CSV_TO_ELASTICSEARCH , message, reply -> {
+      vertx.eventBus().request(Services.CSV_TO_ELASTICSEARCH , message, new DeliveryOptions().setSendTimeout(60000000), reply -> {
         if (reply.succeeded()) {
           JsonObject response = (JsonObject) reply.result().body();
           ctx.response()
@@ -177,7 +176,6 @@ public class MainVerticle extends AbstractVerticle {
     Vertx vertx = Vertx.vertx();
     vertx.deployVerticle(new MainVerticle());
     vertx.deployVerticle(new CsvElasticsearchVerticle());
-    vertx.deployVerticle(new Db());
 
   }
 
