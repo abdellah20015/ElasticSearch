@@ -4,6 +4,7 @@ import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import com.project.elasticsearch.Services.csv.CsvElasticsearchVerticle;
 
 
+import com.project.elasticsearch.Services.search.SearchElasticsearchVerticle;
 import com.project.elasticsearch.config.ElasticsearchConfig;
 import com.project.elasticsearch.constants.Services;
 import io.vertx.core.AbstractVerticle;
@@ -72,7 +73,10 @@ public class MainVerticle extends AbstractVerticle {
 
 
       //CSV
-      routerBuilder.getRoute("uploadCsvToElasticsearch").addHandler(this::handleCsvUpload);
+      routerBuilder.getRoute("uploadCsvToElasticsearch").addHandler(this::handleRequest);
+
+      //Search
+      routerBuilder.getRoute("searchElasticsearch").addHandler(this::handleRequest);
 
 
       // Create a router
@@ -98,84 +102,136 @@ public class MainVerticle extends AbstractVerticle {
     });
   }
 
-  private void handleCsvUpload(RoutingContext ctx) {
+  private void handleRequest(RoutingContext ctx) {
     try {
-      if (ctx.fileUploads().isEmpty()) {
-        ctx.response()
-          .setStatusCode(400)
-          .putHeader("Content-Type", "application/json")
-          .end(new JsonObject()
-            .put("status", "error")
-            .put("message", "No file uploaded")
-            .encode());
-        return;
-      }
+      String operationId = ctx.currentRoute().getMetadata("operationId").toString();
+      JsonObject responseBody;
 
-      FileUpload upload = ctx.fileUploads().iterator().next();
-
-      if (!upload.contentType().equals("text/csv") && !upload.fileName().endsWith(".csv")) {
-        ctx.response()
-          .setStatusCode(400)
-          .putHeader("Content-Type", "application/json")
-          .end(new JsonObject()
-            .put("status", "error")
-            .put("message", "File must be CSV format")
-            .encode());
-        return;
-      }
-
-      String indexName = ctx.request().getFormAttribute("indexName");
-      if (indexName == null || indexName.trim().isEmpty()) {
-        ctx.response()
-          .setStatusCode(400)
-          .putHeader("Content-Type", "application/json")
-          .end(new JsonObject()
-            .put("status", "error")
-            .put("message", "Index name is required")
-            .encode());
-        return;
-      }
-
-      JsonObject message = new JsonObject()
-        .put("filePath", upload.uploadedFileName())
-        .put("fileName", upload.fileName())
-        .put("indexName", indexName);
-
-      vertx.eventBus().request(Services.CSV_TO_ELASTICSEARCH , message, new DeliveryOptions().setSendTimeout(60000000), reply -> {
-        if (reply.succeeded()) {
-          JsonObject response = (JsonObject) reply.result().body();
-          ctx.response()
-            .setStatusCode(response.getBoolean("success", false) ? 200 : 500)
-            .putHeader("Content-Type", "application/json")
-            .end(response.encode());
-        } else {
-          ctx.response()
-            .setStatusCode(500)
-            .putHeader("Content-Type", "application/json")
-            .end(new JsonObject()
+      switch (operationId) {
+        case "uploadCsvToElasticsearch":
+          if (ctx.fileUploads().isEmpty()) {
+            responseBody = new JsonObject()
               .put("status", "error")
-              .put("message", "Failed to process CSV file: " + reply.cause().getMessage())
-              .encode());
-        }
-      });
+              .put("message", "No file uploaded");
+            ctx.response()
+              .setStatusCode(400)
+              .putHeader("Content-Type", "application/json")
+              .end(responseBody.encode());
+            return;
+          }
+
+          FileUpload upload = ctx.fileUploads().iterator().next();
+
+          if (!upload.contentType().equals("text/csv") && !upload.fileName().endsWith(".csv")) {
+            responseBody = new JsonObject()
+              .put("status", "error")
+              .put("message", "File must be CSV format");
+            ctx.response()
+              .setStatusCode(400)
+              .putHeader("Content-Type", "application/json")
+              .end(responseBody.encode());
+            return;
+          }
+
+          String indexName = ctx.request().getFormAttribute("indexName");
+          if (indexName == null || indexName.trim().isEmpty()) {
+            responseBody = new JsonObject()
+              .put("status", "error")
+              .put("message", "Index name is required");
+            ctx.response()
+              .setStatusCode(400)
+              .putHeader("Content-Type", "application/json")
+              .end(responseBody.encode());
+            return;
+          }
+
+          JsonObject message = new JsonObject()
+            .put("filePath", upload.uploadedFileName())
+            .put("fileName", upload.fileName())
+            .put("indexName", indexName);
+
+          vertx.eventBus().request(Services.CSV_TO_ELASTICSEARCH, message, new DeliveryOptions().setSendTimeout(2400000), reply -> {
+            JsonObject eventBusResponse;
+            if (reply.succeeded()) {
+              eventBusResponse = (JsonObject) reply.result().body();
+              ctx.response()
+                .setStatusCode(eventBusResponse.getBoolean("success", false) ? 200 : 500)
+                .putHeader("Content-Type", "application/json")
+                .end(eventBusResponse.encode());
+            } else {
+              eventBusResponse = new JsonObject()
+                .put("status", "error")
+                .put("message", "Failed to process CSV file: " + reply.cause().getMessage());
+              ctx.response()
+                .setStatusCode(500)
+                .putHeader("Content-Type", "application/json")
+                .end(eventBusResponse.encode());
+            }
+          });
+          break;
+
+        case "searchElasticsearch":
+          JsonObject requestBody = ctx.body().asJsonObject();
+
+          if (requestBody == null) {
+            responseBody = new JsonObject()
+              .put("status", "error")
+              .put("message", "Request body is required");
+            ctx.response()
+              .setStatusCode(400)
+              .putHeader("Content-Type", "application/json")
+              .end(responseBody.encode());
+            return;
+          }
+
+          vertx.eventBus().request(Services.SEARCH_ELASTICSEARCH, requestBody, reply -> {
+            JsonObject eventBusResponse;
+            if (reply.succeeded()) {
+              eventBusResponse = (JsonObject) reply.result().body();
+              ctx.response()
+                .setStatusCode(200)
+                .putHeader("Content-Type", "application/json")
+                .end(eventBusResponse.encode());
+            } else {
+              eventBusResponse = new JsonObject()
+                .put("status", "error")
+                .put("message", "Search failed: " + reply.cause().getMessage());
+              ctx.response()
+                .setStatusCode(500)
+                .putHeader("Content-Type", "application/json")
+                .end(eventBusResponse.encode());
+            }
+          });
+          break;
+
+        default:
+          responseBody = new JsonObject()
+            .put("status", "error")
+            .put("message", "Unknown operation");
+          ctx.response()
+            .setStatusCode(400)
+            .putHeader("Content-Type", "application/json")
+            .end(responseBody.encode());
+          break;
+      }
 
     } catch (Exception e) {
+      JsonObject errorResponse = new JsonObject()
+        .put("status", "error")
+        .put("message", "Internal server error: " + e.getMessage());
       ctx.response()
         .setStatusCode(500)
         .putHeader("Content-Type", "application/json")
-        .end(new JsonObject()
-          .put("status", "error")
-          .put("message", "Internal server error: " + e.getMessage())
-          .encode());
+        .end(errorResponse.encode());
     }
   }
-
 
 
   public static void main(String[] args) {
     Vertx vertx = Vertx.vertx();
     vertx.deployVerticle(new MainVerticle());
     vertx.deployVerticle(new CsvElasticsearchVerticle());
+    vertx.deployVerticle(new SearchElasticsearchVerticle());
 
   }
 

@@ -6,7 +6,7 @@
     "description": "API for uploading large CSV files and importing them to Elasticsearch"
   },
   "paths": {
-    "/file/import": {
+    "/data/file/import": {
       "post": {
         "operationId": "uploadCsvToElasticsearch",
         "summary": "Upload CSV file and import to Elasticsearch",
@@ -77,23 +77,43 @@
         }
       }
     },
-    "/api/v1/csv/status/{jobId}": {
-      "get": {
-        "operationId": "getCsvImportStatus",
-        "summary": "Get CSV import job status",
-        "parameters": [
-          {
-            "name": "jobId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
+    "/data/search": {
+      "post": {
+        "operationId": "searchElasticsearch",
+        "summary": "Search data in Elasticsearch index 'elastic_search'",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "description": "Search query string"
+                  },
+                  "page": {
+                    "type": "integer",
+                    "default": 1,
+                    "minimum": 1,
+                    "description": "Page number for pagination"
+                  },
+                  "size": {
+                    "type": "integer",
+                    "default": 10,
+                    "minimum": 1,
+                    "maximum": 100,
+                    "description": "Number of results per page"
+                  }
+                },
+                "required": ["query"]
+              }
             }
           }
-        ],
+        },
         "responses": {
           "200": {
-            "description": "Job status",
+            "description": "Search results from elastic_search index",
             "content": {
               "application/json": {
                 "schema": {
@@ -101,18 +121,47 @@
                   "properties": {
                     "status": {
                       "type": "string",
-                      "enum": ["processing", "completed", "failed"]
+                      "enum": ["success"]
                     },
-                    "progress": {
-                      "type": "number"
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
                     },
-                    "processedRecords": {
-                      "type": "integer"
+                    "total": {
+                      "type": "integer",
+                      "description": "Total number of matching results"
                     },
-                    "totalRecords": {
-                      "type": "integer"
+                    "count": {
+                      "type": "integer",
+                      "description": "Number of results in this response"
                     },
-                    "error": {
+                    "page": {
+                      "type": "integer",
+                      "description": "Current page number"
+                    },
+                    "size": {
+                      "type": "integer",
+                      "description": "Results per page"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["error"]
+                    },
+                    "message": {
                       "type": "string"
                     }
                   }
