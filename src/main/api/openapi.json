@@ -20,18 +20,9 @@
                     "type": "string",
                     "format": "binary",
                     "description": "CSV file to upload"
-                  },
-                  "indexName": {
-                    "type": "string",
-                    "description": "Elasticsearch index name"
-                  },
-                  "batchSize": {
-                    "type": "integer",
-                    "description": "Number of records to process in each batch",
-                    "default": 5000
                   }
                 },
-                "required": ["file", "indexName"]
+                "required": ["file"]
               }
             }
           }

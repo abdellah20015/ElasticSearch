@@ -16,6 +16,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import com.project.elasticsearch.config.ElasticsearchConfig;
 
 public class CsvElasticsearchVerticle extends AbstractVerticle {
+  private static final String INDEX_NAME = "elastic_search";
   private ElasticsearchClient esClient;
 
   @Override
@@ -33,7 +34,7 @@ public class CsvElasticsearchVerticle extends AbstractVerticle {
     System.out.println("Request received: " + request.encode());
 
     String filePath = request.getString("filePath");
-    String indexName = request.getString("indexName").toLowerCase();
+    String indexName = INDEX_NAME;
 
     try {
       boolean indexExists = esClient.indices().exists(e -> e.index(indexName)).value();
